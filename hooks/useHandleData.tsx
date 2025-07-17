@@ -6,31 +6,39 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { stateManagementStore } from '@/stores';
 import { customFunctionStore } from '@/stores/customFunction';
-import { TConditionalChild, TConditionChildMap, TTypeSelect, TVariable } from '@/types';
+import { TConditionChildMap, TTypeSelect, TVariable } from '@/types';
 import { TData, TDataField, TOptionApiResponse } from '@/types/dataItem';
+import { executeConditionalInData } from '@/uitls/handleConditionInData';
 import { transformVariable } from '@/uitls/tranformVariable';
 
+import { actionHookSliceStore } from './actionSliceStore';
 import { handleCustomFunction } from './handleCustomFunction';
+import { findRootConditionChild, handleCompareCondition } from './useConditionAction';
 
 type UseHandleDataReturn = {
   dataState?: any;
   getData: (data: TData | null | undefined, valueStream?: any) => any;
 };
 
-const getRootConditionChild = (condition: TConditionChildMap): TConditionalChild | undefined => {
-  return Object.values(condition.childs || {}).find((child) => !child.parentId);
-};
+const handleCompareValue = ({
+  conditionChildMap,
+  getData,
+}: {
+  conditionChildMap: TConditionChildMap;
+  getData: any;
+}) => {
+  if (_.isEmpty(conditionChildMap)) return;
+  const rootCondition = findRootConditionChild(conditionChildMap);
 
-const getConditionChild = (conditionId: string, condition: TConditionChildMap) => {
-  return condition.childs[conditionId];
+  return handleCompareCondition(rootCondition?.id || '', conditionChildMap, getData);
 };
-
 type TUseHandleData = {
   dataProp?: TData;
 };
 
 export const useHandleData = (props: TUseHandleData): UseHandleDataReturn => {
   const params = useParams();
+  const { findAction } = actionHookSliceStore();
   const apiResponseState = stateManagementStore((state) => state.apiResponse);
   const findCustomFunction = customFunctionStore((state) => state.findCustomFunction);
   const appState = stateManagementStore((state) => state.appState);
@@ -96,71 +104,6 @@ export const useHandleData = (props: TUseHandleData): UseHandleDataReturn => {
     [findVariable]
   );
 
-  const getConditionValue = useCallback((conditionMap: TConditionChildMap) => {
-    const conditionRoot = getRootConditionChild(conditionMap);
-    if (_.isEmpty(conditionRoot)) return false;
-    const isConditionMet = handleCompareCondition(conditionRoot?.id as string, conditionMap);
-    return isConditionMet;
-  }, []);
-
-  const handleCompareCondition = useCallback(
-    (conditionChildId: string, condition: TConditionChildMap): boolean => {
-      const conditionChild = getConditionChild(conditionChildId, condition);
-
-      if (conditionChild.type === 'compare') {
-        return getCompareValue(conditionChild.compare);
-      }
-
-      let firstValue;
-      let secondValue;
-
-      if (conditionChild.fistCondition) {
-        firstValue = handleCompareCondition(conditionChild.fistCondition, condition);
-      }
-
-      if (conditionChild.secondCondition) {
-        secondValue = handleCompareCondition(conditionChild.secondCondition, condition);
-      }
-
-      if (conditionChild.logicOperator === 'and') {
-        return !!(firstValue && secondValue);
-      }
-      if (conditionChild.logicOperator === 'or') {
-        return !!(firstValue || secondValue);
-      }
-      return !!(firstValue && secondValue);
-    },
-    []
-  );
-
-  const evaluateCondition = (firstValue: any, secondValue: any, operator: string): boolean => {
-    switch (operator) {
-      case 'equal':
-        return String(firstValue) === String(secondValue);
-      case 'notEqual':
-        return String(firstValue) !== String(secondValue);
-      case 'greaterThan':
-        return Number(firstValue) > Number(secondValue);
-      case 'lessThan':
-        return Number(firstValue) < Number(secondValue);
-      case 'greaterThanOrEqual':
-        return Number(firstValue) >= Number(secondValue);
-      case 'lessThanOrEqual':
-        return Number(firstValue) <= Number(secondValue);
-      default:
-        return false;
-    }
-  };
-
-  const getCompareValue = useCallback((compare: TConditionalChild['compare']): boolean => {
-    const firstCompare = getData(compare?.firstValue);
-    const secondCompare = getData(compare?.secondValue);
-    if (!firstCompare || !secondCompare) return false;
-
-    const resultCompare = evaluateCondition(firstCompare, secondCompare, compare.operator);
-    return resultCompare;
-  }, []);
-
   //#region  handle state
   const handleState = useCallback(
     (data: TData) => {
@@ -197,9 +140,10 @@ export const useHandleData = (props: TUseHandleData): UseHandleDataReturn => {
               if (Array.isArray(value)) {
                 value = value.filter((item: any) => {
                   itemInList.current = item;
-                  const result = getConditionValue(
-                    optionItem.filterCondition?.data as TConditionChildMap
-                  );
+                  const result = handleCompareValue({
+                    conditionChildMap: optionItem.filterCondition?.data as TConditionChildMap,
+                    getData,
+                  });
                   return result;
                 });
               }
@@ -300,9 +244,10 @@ export const useHandleData = (props: TUseHandleData): UseHandleDataReturn => {
           if (Array.isArray(value)) {
             value = value.filter((item: any) => {
               itemInList.current = item;
-              const result = getConditionValue(
-                optionItem.filterCondition?.data as TConditionChildMap
-              );
+              const result = handleCompareValue({
+                conditionChildMap: optionItem.filterCondition?.data as TConditionChildMap,
+                getData,
+              });
               return result;
             });
           }
@@ -348,14 +293,20 @@ export const useHandleData = (props: TUseHandleData): UseHandleDataReturn => {
   };
 
   const handleParemeters = (data: TData) => {
-    console.log('🚀 ~ handleParemeters ~ data:', data);
     const paramName = data?.parameters?.paramName;
-    console.log('🚀 ~ handleParemeters ~ paramName:', paramName);
-
     if (!paramName) return '';
     const result = params[paramName];
-    console.log('🚀 ~ handleParemeters ~ result:', result);
     return result;
+  };
+
+  const handleCondition = (data: TData) => {
+    const value = executeConditionalInData(data?.condition, getData);
+    // return executeConditional(conditionChildMap, findAction, getData);
+    return value;
+    // if (_.isEmpty(conditionChildMap)) return;
+    // const rootCondition = findRootConditionChild(conditionChildMap);
+
+    // return handleCompareCondition(rootCondition?.id || '', conditionChildMap, getData);
   };
   //#region getData
   const getData = useCallback(
@@ -388,6 +339,9 @@ export const useHandleData = (props: TUseHandleData): UseHandleDataReturn => {
             findCustomFunction,
             getData,
           });
+
+        case 'condition':
+          return handleCondition(data);
         default:
           return data?.defaultValue;
       }
