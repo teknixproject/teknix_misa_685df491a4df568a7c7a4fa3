@@ -2,8 +2,7 @@
 import dayjs from 'dayjs';
 /** @jsxImportSource @emotion/react */
 import _ from 'lodash';
-import { FC, memo, useMemo } from 'react';
-import isEqual from 'react-fast-compare';
+import { FC, useMemo } from 'react';
 import { Controller, FormProvider, useForm, useFormContext } from 'react-hook-form';
 
 import { useActions } from '@/hooks/useActions';
@@ -24,19 +23,45 @@ type TProps = {
   valueStream?: any;
   formKeys?: { key: string; value: string }[];
 };
+const getPropData = (data: GridItem) =>
+  data?.componentProps?.dataProps?.filter((item: any) => item.type === 'data');
 
+const getPropActions = (data: GridItem) =>
+  data?.componentProps?.dataProps?.filter((item: any) => item.type.includes('MouseEventHandler'));
+
+const handleCssWithEmotion = (staticProps: Record<string, any>) => {
+  const advancedCss = convertToEmotionStyle(staticProps?.styleMultiple);
+  let cssMultiple;
+
+  if (typeof advancedCss === 'string') {
+    // If it's a CSS string, use template literal directly
+    cssMultiple = css`
+      ${advancedCss}
+    `;
+  } else if (advancedCss && typeof advancedCss === 'object') {
+    // If it's a CSS object, convert kebab-case to camelCase and use as object
+    const convertedCssObj = convertCssObjectToCamelCase(advancedCss);
+    cssMultiple = css(convertedCssObj);
+  } else {
+    // Fallback to empty css
+    cssMultiple = css``;
+  }
+
+  return cssMultiple;
+};
 // Custom hook to extract common logic
 const useRenderItem = (data: GridItem, valueStream?: any) => {
+  // console.log('🚀 ~ useRenderItem ~ valueStream:', valueStream);
   const { isForm, isNoChildren, isChart, isDatePicker } = getComponentType(data?.value || '');
   const { findVariable } = stateManagementStore();
-  const { getData, dataState } = useHandleData({ dataProp: data?.data });
-  console.log('🚀 ~ useRenderItem ~ dataState:', dataState);
-  const actionsProp = useMemo(
-    () => data?.componentProps?.dataProps || [],
-    [data?.componentProps?.dataProps]
-  );
-  console.log('🚀 ~ useRenderItem ~ actionsProp:', actionsProp);
-  const { multiples } = useHandleProps({ actionsProp, valueStream });
+  const { dataState } = useHandleData({
+    dataProp: getPropData(data),
+    valueStream,
+  });
+
+  // console.log(`🚀 ~ useRenderItem ~ dataState:${data.id}`, dataState);
+  const { actions } = useHandleProps({ dataProps: getPropActions(data) });
+
   const { handleAction, isLoading } = useActions(data);
 
   const valueType = useMemo(() => data?.value?.toLowerCase() || '', [data?.value]);
@@ -49,48 +74,34 @@ const useRenderItem = (data: GridItem, valueStream?: any) => {
   const propsCpn = useMemo(() => {
     const staticProps = {
       ...convertProps({ data }),
-      onClick: () => handleAction('onClick'),
-      // onChange: () => handleAction('onChange'),
     };
 
-    const advancedCss = convertToEmotionStyle(staticProps?.styleMultiple);
+    staticProps.css = handleCssWithEmotion(staticProps);
 
-    // Fix 1: Check if advancedCss is a string (CSS string) or object (CSS object)
-    let cssMultiple;
+    const result =
+      valueType === 'menu'
+        ? { ...staticProps, ...actions }
+        : {
+          ...staticProps,
+          ...dataState,
+          ...actions,
+        };
+    console.log('isDatePicker', isDatePicker);
 
-    if (typeof advancedCss === 'string') {
-      // If it's a CSS string, use template literal directly
-      cssMultiple = css`
-        ${advancedCss}
-      `;
-    } else if (advancedCss && typeof advancedCss === 'object') {
-      // If it's a CSS object, convert kebab-case to camelCase and use as object
-      const convertedCssObj = convertCssObjectToCamelCase(advancedCss);
-      cssMultiple = css(convertedCssObj);
-    } else {
-      // Fallback to empty css
-      cssMultiple = css``;
-    }
-
-    staticProps.css = cssMultiple;
-
-    const result = {
-      ...staticProps,
-      ...multiples,
-    };
     if (isDatePicker) {
+
       if (typeof result.value === 'string') result.value = dayjs(result.value);
       if (typeof result.defaultValue === 'string') result.defaultValue = dayjs(result.defaultValue);
     }
-    // if (isNoChildren && 'children' in result) {
-    //   delete result.children;
-    // }
-    if ('styleMultiple' in result) delete result.styleMultiple;
-    if ('dataProps' in result) delete result.dataProps;
+    if (isNoChildren && 'children' in result) {
+      _.unset(result, 'children');
+    }
+    if ('styleMultiple' in result) _.unset(result, 'styleMultiple');
+    if ('dataProps' in result) _.unset(result, 'dataProps');
 
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, getData, dataState, valueStream, multiples, handleAction]);
+  }, [data, dataState, valueStream, handleAction]);
 
   return {
     isLoading,
@@ -99,7 +110,6 @@ const useRenderItem = (data: GridItem, valueStream?: any) => {
     propsCpn: convertDataToProps(propsCpn),
     findVariable,
     dataState,
-    getData,
   };
 };
 
@@ -118,7 +128,10 @@ const ComponentRenderer: FC<{
 const RenderSliceItem: FC<TProps> = (props) => {
   const { data, valueStream } = props;
   const { isLoading, valueType, Component, propsCpn, dataState } = useRenderItem(data, valueStream);
-  console.log('🚀 ~ propsCpn:', propsCpn);
+  // console.log(`🚀 ~ propsCpn: ${data.id}`, {
+  //   propsCpn,
+  //   data,
+  // });
   const { isForm, isNoChildren, isChart, isFeebBack } = getComponentType(data?.value || '');
   if (!valueType) return <div></div>;
   if (isLoading) return <LoadingPage />;
@@ -214,4 +227,4 @@ const RenderFormItem: FC<TProps> = (props) => {
   );
 };
 
-export default memo(RenderSliceItem, isEqual);
+export default RenderSliceItem;
