@@ -13,7 +13,7 @@ import { stateManagementStore } from '@/stores';
 import { GridItem } from '@/types/gridItem';
 import { getComponentType } from '@/uitls/component';
 import { convertCssObjectToCamelCase, convertToEmotionStyle } from '@/uitls/styleInline';
-import { convertDataToProps } from '@/uitls/transfromProp';
+import { convertToPlainProps } from '@/uitls/transfromProp';
 import { css } from '@emotion/react';
 
 import { componentRegistry, convertProps } from './ListComponent';
@@ -52,7 +52,7 @@ const handleCssWithEmotion = (staticProps: Record<string, any>) => {
 const useRenderItem = (data: GridItem, valueStream?: any) => {
   const { isForm, isNoChildren, isChart, isDatePicker } = getComponentType(data?.value || '');
   const { findVariable } = stateManagementStore();
-  const { dataState } = useHandleData({
+  const { dataState, getData } = useHandleData({
     dataProp: getPropData(data),
     valueStream,
   });
@@ -102,7 +102,7 @@ const useRenderItem = (data: GridItem, valueStream?: any) => {
     isLoading,
     valueType,
     Component,
-    propsCpn: convertDataToProps(propsCpn),
+    propsCpn: convertToPlainProps(propsCpn, getData),
     findVariable,
     dataState,
   };
@@ -115,8 +115,11 @@ const ComponentRenderer: FC<{
   data: GridItem;
   children?: React.ReactNode;
 }> = ({ Component, propsCpn, data, children }) => {
+  // console.log('ComponentRenderer', propsCpn?.style);
+  const { style, ...newPropsCpn } = propsCpn
+
   return (
-    <Component key={data?.id} {...propsCpn}>
+    <Component key={data?.id} {...newPropsCpn}>
       {!_.isEmpty(data?.childs) ? children : propsCpn.children}
     </Component>
   );
@@ -125,13 +128,19 @@ const ComponentRenderer: FC<{
 const RenderSliceItem: FC<TProps> = (props) => {
   const { data, valueStream } = props;
   const { isLoading, valueType, Component, propsCpn, dataState } = useRenderItem(data, valueStream);
-  const { isForm, isNoChildren, isChart, isFeebBack } = getComponentType(data?.value || '');
+  // console.log(`🚀 ~ propsCpn:${data.id}`, propsCpn);
+  const { isForm, isNoChildren, isChart, isMap } = getComponentType(data?.value || '');
   if (!valueType) return <div></div>;
   if (isLoading) return;
   if (isForm) return <RenderForm {...props} />;
 
   if (isNoChildren || isChart) return <Component key={data?.id} {...propsCpn} />;
-
+  if (isMap)
+    return (
+      <div style={{ width: propsCpn.width || '100%', height: propsCpn.height || '400px' }}>
+        <Component key={data?.id} {...propsCpn} />
+      </div>
+    );
   return (
     <ComponentRenderer Component={Component} propsCpn={propsCpn} data={data}>
       {data?.childs?.map((child, index) => (
