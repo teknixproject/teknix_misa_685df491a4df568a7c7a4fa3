@@ -57,6 +57,7 @@ const useRenderItem = (data: GridItem, valueStream?: any) => {
     dataProp: getPropData(data),
     valueStream,
   });
+  console.log(`🚀 ~ useRenderItem ~ dataState:${data.id}`, dataState);
 
   const { actions } = useHandleProps({ dataProps: getPropActions(data) });
 
@@ -76,14 +77,14 @@ const useRenderItem = (data: GridItem, valueStream?: any) => {
 
     staticProps.css = handleCssWithEmotion(staticProps);
 
-    const result =
+    let result =
       valueType === 'menu'
         ? { ...staticProps, ...actions }
         : {
-          ...staticProps,
-          ...dataState,
-          ...actions,
-        };
+            ...dataState,
+            ...staticProps,
+            ...actions,
+          };
 
     if (isDatePicker) {
       if (typeof result.value === 'string') result.value = dayjs(result.value);
@@ -94,6 +95,9 @@ const useRenderItem = (data: GridItem, valueStream?: any) => {
     }
     if ('styleMultiple' in result) _.unset(result, 'styleMultiple');
     if ('dataProps' in result) _.unset(result, 'dataProps');
+    const plainProps = convertToPlainProps(result, getData);
+
+    result = cleanProps(plainProps, valueType);
 
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -103,7 +107,7 @@ const useRenderItem = (data: GridItem, valueStream?: any) => {
     isLoading,
     valueType,
     Component,
-    propsCpn: cleanProps(convertToPlainProps(propsCpn, getData), valueType),
+    propsCpn,
     findVariable,
     dataState,
   };
@@ -117,7 +121,7 @@ const ComponentRenderer: FC<{
   children?: React.ReactNode;
 }> = ({ Component, propsCpn, data, children }) => {
   // console.log('ComponentRenderer', propsCpn?.style);
-  const { style, ...newPropsCpn } = propsCpn
+  const { style, ...newPropsCpn } = propsCpn;
 
   return (
     <Component key={data?.id} {...newPropsCpn}>
@@ -128,8 +132,8 @@ const ComponentRenderer: FC<{
 
 const RenderSliceItem: FC<TProps> = (props) => {
   const { data, valueStream } = props;
+  console.log(`🚀 ~ { data, valueStream }:`, { data, valueStream });
   const { isLoading, valueType, Component, propsCpn, dataState } = useRenderItem(data, valueStream);
-  // console.log(`🚀 ~ propsCpn:${data.id}`, propsCpn);
   const { isForm, isNoChildren, isChart, isMap } = getComponentType(data?.value || '');
   if (!valueType) return <div></div>;
   if (isLoading) return;
