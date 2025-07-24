@@ -9,7 +9,7 @@ import {
 import { GridItem } from '@/types/gridItem';
 import { transformVariable } from '@/uitls/tranformVariable';
 
-import { actionHookSliceStore } from './actionSliceStore';
+import { actionHookSliceStore } from './store/actionSliceStore';
 import { useApiCallAction } from './useApiCallAction';
 import { useConditionChildAction } from './useConditionChildAction';
 import { useCustomFunction } from './useCustomFunction';
@@ -27,7 +27,15 @@ export type TUseActions = {
   executeActionFCType: (action?: TAction) => Promise<void>;
 };
 
-export const useActions = (data?: GridItem): TUseActions => {
+export type TActionsProps = {
+  data?: GridItem;
+  valueStream?: any;
+};
+export const useActions = (props: TActionsProps): TUseActions => {
+  const { data, valueStream } = useMemo(() => {
+    return props;
+  }, [props]);
+
   const actions = useMemo(() => _.get(data, 'actions') as TTriggerActions, [data]);
   const setMultipleActions = actionHookSliceStore((state) => state.setMultipleActions);
   const findAction = actionHookSliceStore((state) => state.findAction);
@@ -35,7 +43,7 @@ export const useActions = (data?: GridItem): TUseActions => {
   // const { executeConditional } = useConditionAction();
   const { executeConditionalChild } = useConditionChildAction();
   const { handleUpdateStateAction } = useUpdateStateAction();
-  const { handleNavigateAction } = useNavigateAction();
+  const { handleNavigateAction } = useNavigateAction({ data, valueStream });
   const { executeLoopOverList } = useLoopActions();
   const { handleCustomFunction } = useCustomFunction();
   const [isLoading, setIsLoading] = useState(false);
@@ -45,7 +53,6 @@ export const useActions = (data?: GridItem): TUseActions => {
     if (_.isEmpty(conditions)) return;
     for (const conditionId of conditions) {
       const condition = findAction(conditionId) as TAction<TConditionChildMap>;
-      console.log('🚀 ~ executeConditional ~ condition:', condition);
 
       if (condition) {
         executeActionFCType(condition);
@@ -64,7 +71,6 @@ export const useActions = (data?: GridItem): TUseActions => {
         break;
       case 'conditionalChild':
         const isMatch = await executeConditionalChild(action as TAction<TConditionChildMap>);
-        console.log('🚀 ~ executeActionFCType ~ isMatch:', { action, isMatch });
         const conditionChildData = action?.data as TConditionChildMap;
         const isReturnValue = (action?.data as TConditionChildMap)?.isReturnValue;
         if (isReturnValue && isMatch) {
@@ -120,7 +126,6 @@ export const useActions = (data?: GridItem): TUseActions => {
     formData?: Record<string, any>
   ): Promise<void> => {
     const actionsToExecute = triggerActions[triggerType];
-    console.log('🚀 ~ useActions ~ actionsToExecute:', actionsToExecute);
 
     await setMultipleActions({
       actions: triggerActions,
@@ -157,7 +162,6 @@ export const useActions = (data?: GridItem): TUseActions => {
 
   useEffect(() => {
     if (mounted.current && !_.isEmpty(actions) && 'onPageLoad' in actions) {
-      console.log('🚀 ~ useEffect ~ actions:', actions);
       handleAction('onPageLoad');
     }
   }, [mounted.current]);

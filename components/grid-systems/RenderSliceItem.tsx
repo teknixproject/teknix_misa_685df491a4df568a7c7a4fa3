@@ -5,7 +5,7 @@ import _ from 'lodash';
 import { FC, useMemo } from 'react';
 import { Controller, FormProvider, useForm, useFormContext } from 'react-hook-form';
 
-import { actionHookSliceStore } from '@/hooks/actionSliceStore';
+import { actionHookSliceStore } from '@/hooks/store/actionSliceStore';
 import { useActions } from '@/hooks/useActions';
 import { useHandleData } from '@/hooks/useHandleData';
 import { useHandleProps } from '@/hooks/useHandleProps';
@@ -18,6 +18,7 @@ import { convertToPlainProps } from '@/uitls/transfromProp';
 import { css } from '@emotion/react';
 
 import { componentRegistry, convertProps } from './ListComponent';
+import LoadingPage from './loadingPage';
 
 type TProps = {
   data: GridItem;
@@ -51,19 +52,20 @@ const handleCssWithEmotion = (staticProps: Record<string, any>) => {
 };
 // Custom hook to extract common logic
 const useRenderItem = (data: GridItem, valueStream?: any) => {
+  const valueType = useMemo(() => data?.value?.toLowerCase() || '', [data?.value]);
   const { isForm, isNoChildren, isChart, isDatePicker } = getComponentType(data?.value || '');
   const { findVariable } = stateManagementStore();
   const { dataState, getData } = useHandleData({
     dataProp: getPropData(data),
+    componentProps: data?.componentProps,
     valueStream,
+    valueType,
+    activeData: data,
   });
-  console.log(`🚀 ~ useRenderItem ~ dataState:${data.id}`, dataState);
 
-  const { actions } = useHandleProps({ dataProps: getPropActions(data) });
+  const { actions } = useHandleProps({ dataProps: getPropActions(data), data, valueStream });
 
-  const { isLoading } = useActions(data);
-
-  const valueType = useMemo(() => data?.value?.toLowerCase() || '', [data?.value]);
+  const { isLoading } = useActions({ data, valueStream });
 
   const Component = useMemo(
     () => (valueType ? _.get(componentRegistry, valueType) || 'div' : 'div'),
@@ -71,8 +73,8 @@ const useRenderItem = (data: GridItem, valueStream?: any) => {
   );
 
   const propsCpn = useMemo(() => {
-    const staticProps = {
-      ...convertProps({ data }),
+    const staticProps: Record<string, any> = {
+      ...convertProps({ initialProps: dataState, valueType }),
     };
 
     staticProps.css = handleCssWithEmotion(staticProps);
@@ -131,12 +133,14 @@ const ComponentRenderer: FC<{
 };
 
 const RenderSliceItem: FC<TProps> = (props) => {
-  const { data, valueStream } = props;
-  console.log(`🚀 ~ { data, valueStream }:`, { data, valueStream });
+  const { data, valueStream } = useMemo(() => props, [props]);
+
   const { isLoading, valueType, Component, propsCpn, dataState } = useRenderItem(data, valueStream);
+  // console.log(`🚀 ~ propsCpn: ${data.id}`, propsCpn);
+
   const { isForm, isNoChildren, isChart, isMap } = getComponentType(data?.value || '');
   if (!valueType) return <div></div>;
-  if (isLoading) return;
+  if (isLoading) return <LoadingPage />;
   if (isForm) return <RenderForm {...props} />;
 
   if (isNoChildren || isChart) return <Component key={data?.id} {...propsCpn} />;
@@ -167,12 +171,21 @@ const RenderForm: FC<TProps> = (props) => {
     values: dataState,
   });
   const { handleSubmit } = methods;
-  const { handleAction } = useActions();
+  const { handleAction } = useActions(props);
   const setFormData = actionHookSliceStore((state) => state.setFormData);
   const formKeys = useMemo(() => data?.componentProps?.formKeys, [data?.componentProps?.formKeys]);
 
   const onSubmit = (formData: any) => {
-    setFormData(formData);
+    const convertFormData = _.reduce(
+      formKeys,
+      (acc, { key, value }) => {
+        acc[key] = formData[value] || formData[key];
+        return acc;
+      },
+      {} as Record<string, any>
+    );
+
+    setFormData(convertFormData);
     propsCpn?.onFinish();
   };
 
@@ -205,6 +218,7 @@ const RenderForm: FC<TProps> = (props) => {
 const RenderFormItem: FC<TProps> = (props) => {
   const { data, formKeys, valueStream } = props;
   const { isLoading, valueType, Component, propsCpn, dataState } = useRenderItem(data, valueStream);
+  const { name, ...rest } = useMemo(() => propsCpn, [propsCpn]);
   const { control } = useFormContext();
   const { isInput } = getComponentType(data?.value || '');
 
@@ -218,16 +232,16 @@ const RenderFormItem: FC<TProps> = (props) => {
         <Controller
           control={control}
           name={inFormKeys.key}
-          render={({ field }) => <Component {...propsCpn} {...field} />}
+          render={({ field }) => <Component {...rest} {...field} />}
         />
       );
     }
-    return <Component {...propsCpn} />;
+    return <Component {...rest} />;
   }
   if (!valueType) return <div></div>;
   if (isLoading) return;
   return (
-    <ComponentRenderer Component={Component} propsCpn={propsCpn} data={data}>
+    <ComponentRenderer Component={Component} propsCpn={rest} data={data}>
       {data?.childs?.map((child) => (
         <RenderFormItem {...props} data={child} key={`form-child-${child.id}`} />
       ))}
